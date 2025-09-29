@@ -1,52 +1,99 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Jul 12 11:02:06 2020
+"""Convenience entry point for scraping multiple Google Image search terms."""
 
-@author: OHyic
-
-"""
-#Import libraries
+import logging
 import os
-import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from typing import Iterable, List
+
 from GoogleImageScraper import GoogleImageScraper
 from patch import webdriver_executable
 
 
-def worker_thread(search_key):
-    image_scraper = GoogleImageScraper(
-        webdriver_path, 
-        image_path, 
-        search_key, 
-        number_of_images, 
-        headless, 
-        min_resolution, 
-        max_resolution, 
-        max_missed)
-    image_urls = image_scraper.find_image_urls()
-    image_scraper.save_images(image_urls, keep_filenames)
+logger = logging.getLogger(__name__)
 
-    #Release resources
-    del image_scraper
+
+@dataclass(frozen=True)
+class ScraperSettings:
+    webdriver_path: str
+    image_root: str
+    number_of_images: int
+    headless: bool
+    min_resolution: tuple[int, int]
+    max_resolution: tuple[int, int]
+    max_missed: int
+    keep_filenames: bool
+
+
+def configure_logging() -> None:
+    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+
+
+def run_search(search_key: str, settings: ScraperSettings) -> None:
+    """Execute a single Google Images search and download the results."""
+
+    logger.info("Starting scrape for '%s'", search_key)
+    try:
+        scraper = GoogleImageScraper(
+            webdriver_path=settings.webdriver_path,
+            image_path=settings.image_root,
+            search_key=search_key,
+            number_of_images=settings.number_of_images,
+            headless=settings.headless,
+            min_resolution=settings.min_resolution,
+            max_resolution=settings.max_resolution,
+            max_missed=settings.max_missed,
+        )
+        image_urls = scraper.find_image_urls()
+        scraper.save_images(image_urls, keep_filenames=settings.keep_filenames)
+        logger.info("Completed scrape for '%s' (%d images)", search_key, len(image_urls))
+    except Exception as error:  # pylint: disable=broad-except
+        logger.exception("Scrape failed for '%s': %s", search_key, error)
+
+
+def unique_search_terms(search_terms: Iterable[str]) -> List[str]:
+    """Return a sorted list of de-duplicated search terms."""
+
+    cleaned_terms = {term.strip() for term in search_terms if term.strip()}
+    return sorted(cleaned_terms)
+
+
+def build_default_settings() -> ScraperSettings:
+    cwd = os.getcwd()
+    webdriver_path = os.path.normpath(os.path.join(cwd, "webdriver", webdriver_executable()))
+    image_root = os.path.normpath(os.path.join(cwd, "photos"))
+    return ScraperSettings(
+        webdriver_path=webdriver_path,
+        image_root=image_root,
+        number_of_images=200,
+        headless=True,
+        min_resolution=(512, 512),
+        max_resolution=(9999, 9999),
+        max_missed=10,
+        keep_filenames=False,
+    )
+
+
+def run_batch(search_terms: Iterable[str], settings: ScraperSettings, max_workers: int = 1) -> None:
+    """Run the scraper across multiple search terms in parallel."""
+
+    terms = unique_search_terms(search_terms)
+    if not terms:
+        logger.warning("No search terms supplied; nothing to do.")
+        return
+
+    logger.info("Scheduling %d search term(s) with %d worker(s)", len(terms), max_workers)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for term in terms:
+            executor.submit(run_search, term, settings)
+
+
+def main() -> None:
+    configure_logging()
+    settings = build_default_settings()
+    default_terms = ["Weird Al Yankovic"]
+    run_batch(default_terms, settings, max_workers=1)
+
 
 if __name__ == "__main__":
-    #Define file path
-    webdriver_path = os.path.normpath(os.path.join(os.getcwd(), 'webdriver', webdriver_executable()))
-    image_path = os.path.normpath(os.path.join(os.getcwd(), 'photos'))
-
-    #Add new search key into array ["cat","t-shirt","apple","orange","pear","fish"]
-    search_keys = list(set(["car","stars"]))
-
-    #Parameters
-    number_of_images = 10                # Desired number of images
-    headless = False                    # True = No Chrome GUI
-    min_resolution = (0, 0)             # Minimum desired image resolution
-    max_resolution = (9999, 9999)       # Maximum desired image resolution
-    max_missed = 10                     # Max number of failed images before exit
-    number_of_workers = 1               # Number of "workers" used
-    keep_filenames = False              # Keep original URL image filenames
-
-    #Run each search_key in a separate thread
-    #Automatically waits for all threads to finish
-    #Removes duplicate strings from search_keys
-    with concurrent.futures.ThreadPoolExecutor(max_workers=number_of_workers) as executor:
-        executor.map(worker_thread, search_keys)
+    main()

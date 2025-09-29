@@ -1,52 +1,90 @@
 # Google Image Scraper
-A library created to scrape Google Images.<br>
-If you are looking for other image scrapers, JJLimmm has created image scrapers for Gettyimages, Shutterstock, and Bing. <br>
-Visit their repo here: https://github.com/JJLimmm/Website-Image-Scraper
 
-## Pre-requisites:
-1. Google Chrome
-2. Python3 packages (Pillow, Selenium, Requests)
-3. Windows OS (Other OS is not tested)
+Python tooling for collecting Google Images results at scale. The scraper runs headless by default, automatically keeps your ChromeDriver in sync, and can target single or multiple search terms from the command line.
 
-## Setup:
-1. Open command prompt
-2. Clone this repository (or [download](https://github.com/ohyicong/Google-Image-Scraper/archive/refs/heads/master.zip))
-    ```
-    git clone https://github.com/ohyicong/Google-Image-Scraper
-    ```
-3. Install Dependencies
-    ```
-    pip install -r requirements.txt
-    ```
-4. Edit your desired parameters in main.py
-    ```
-    search_keys         = Strings that will be searched for
-    number of images    = Desired number of images
-    headless            = Chrome GUI behaviour. If True, there will be no GUI
-    min_resolution      = Minimum desired image resolution
-    max_resolution      = Maximum desired image resolution
-    max_missed          = Maximum number of failed image grabs before program terminates. Increase this number to ensure large queries do not exit.
-    number_of_workers   = Number of sectioned jobs created. Restricted to one worker per search term and thread.
-    ```
-4. Run the program
-    ```
-    python main.py
-    ```
+If you are looking for image scrapers targeting Getty Images, Shutterstock, or Bing, check out [JJLimmm/Website-Image-Scraper](https://github.com/JJLimmm/Website-Image-Scraper).
 
-## Usage:
-This project was created to bypass Google Chrome's new restrictions on web scraping from Google Images. 
-To use it, define your desired parameters in main.py and run through the command line:
-```
-python main.py
+## Requirements
+
+- Windows (other platforms are untested)
+- Google Chrome (latest version recommended)
+- Python 3.10+ with `pip`
+
+All Python dependencies are listed in `requirements.txt` (`selenium`, `pillow`, `requests`).
+
+## Installation
+
+```powershell
+git clone https://github.com/ohyicong/Google-Image-Scraper
+cd Google-Image-Scraper
+python -m venv .venv
+.venv\Scripts\Activate
+pip install -r requirements.txt
 ```
 
-## Youtube Video:
-[![IMAGE ALT TEXT](https://github.com/ohyicong/Google-Image-Scraper/blob/master/youtube_thumbnail.PNG)](https://youtu.be/QZn_ZxpsIw4 "Google Image Scraper")
+The scraper will download or patch the matching ChromeDriver automatically the first time it runs.
 
+## Quick start: single search
 
-## IMPORTANT:
-Although it says so in the video, this program will not run through VSCode. It must be run in the command line.
+```powershell
+python GoogleImageScraper.py --search "rivers cuomo" --limit 20
+```
 
-This program will install an updated webdriver automatically. There is no need to install your own.
+Downloads land in `photos/<search term>/` (falls back to `photos` inside the repo). Run `--help` to see the full list of options:
 
-### Please like, subscribe, and share if you found my project helpful! 
+```text
+usage: GoogleImageScraper.py [-h] --search SEARCH [SEARCH ...]
+                             [--limit LIMIT] [--output OUTPUT]
+                             [--webdriver-path WEBDRIVER_PATH]
+                             [--min-resolution WIDTH HEIGHT]
+                             [--max-resolution WIDTH HEIGHT]
+                             [--max-missed MAX_MISSED]
+                             [--keep-filenames] [--show-browser]
+                             [--headless] [--verbose]
+```
+
+Key flags:
+
+- `--search/-s`: one or more tokens that will be joined into the Google Images query (required).
+- `--limit/-n`: maximum number of preview URLs to collect (default `50`).
+- `--output/-o`: base directory for downloads (default `photos`).
+- `--show-browser`: disable headless mode so you can watch the browser session.
+- `--keep-filenames`: keep the remote filename instead of the generated `<search><index>` pattern.
+- `--min-resolution`/`--max-resolution`: reject images outside of the given bounds (default `512x512` minimum).
+- `--verbose`: promote the logger to DEBUG for troubleshooting Selenium interactions.
+
+> **Tip:** Some hosts (e.g., Wikimedia) block automated downloads and may emit `403` errors. The scraper logs these events and continues with the remaining URLs.
+
+## Batch runs
+
+The `main.py` helper demonstrates how to schedule multiple queries with shared settings and optional threading. Edit the `default_terms` list or import `run_batch` in your own scripts:
+
+```python
+from main import build_default_settings, run_batch
+
+settings = build_default_settings()
+run_batch(["rivers cuomo", "brian wilson"], settings, max_workers=2)
+```
+
+Each worker uses the same configuration object, so tweak `build_default_settings()` (limit, headless mode, resolution bounds, etc.) to fit your workload.
+
+## Troubleshooting
+
+- Run with `--show-browser` if you need to inspect what Selenium is doing.
+- Use `--verbose` to emit detailed thumbnail/preview diagnostics.
+- If Chrome updates and the driver mismatch causes a startup failure, the scraper retries once with an auto-patched driver. Manual downloads are rarely necessary.
+- Long-running sessions may trigger Google rate limits; lower `--limit` or increase `--max-missed` to trade off between persistence and runtime.
+
+## FAQ
+
+- **Why are some images missing?** Files that don't meet the resolution bounds or are served via blocked hosts are skipped. Check the log output for the exact reason.
+- **Where are files saved?** `$OUTPUT/<search term>/` inside the working directory. Use `--keep-filenames` to retain original filenames.
+- **Can I call the scraper from another script?** Yes—import `GoogleImageScraper` and instantiate it directly or call `run_cli([...])` with custom arguments.
+
+## Demo video
+
+[![Google Image Scraper walkthrough](https://github.com/ohyicong/Google-Image-Scraper/blob/master/youtube_thumbnail.PNG)](https://youtu.be/QZn_ZxpsIw4)
+
+---
+
+Run the scripts from a terminal (PowerShell, Command Prompt). Executing inside VS Code's debugger is not supported.
